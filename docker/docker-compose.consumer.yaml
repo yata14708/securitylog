@@ -1,0 +1,111 @@
+services:
+  # ── Log Producer ──────────────────────────────────────────────
+  producer:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.producer
+    container_name: log-producer
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=broker:19092
+      - DATA_DIR=/app/data
+      - PRODUCER_DELAY_MS=0
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Mount the actual dataset folder from your host
+      - ../../Dataset:/app/data:ro
+    depends_on:
+      broker:
+        condition: service_healthy
+    restart: on-failure
+
+  # ── Spark Job 1 — Normalizer ───────────────────────────────────
+  normalizer:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.spark
+    container_name: spark-normalizer
+    command: >
+      /opt/spark/bin/spark-submit
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.2,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
+      --conf "spark.driver.extraJavaOptions=-Divy.home=/tmp/.ivy2"
+      src/normalizer.py
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=broker:19092
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=admin
+      - MINIO_SECRET_KEY=password
+      - INPUT_TOPICS=raw-cicids,raw-unsw,raw-cicdos
+      - OUTPUT_TOPIC=logs-normalized
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      broker:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    restart: on-failure
+
+  # ── Spark Job 2 — Aggregator ───────────────────────────────────
+  aggregator:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.spark
+    container_name: spark-aggregator
+    command: >
+      /opt/spark/bin/spark-submit
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.2,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
+      --conf "spark.driver.extraJavaOptions=-Divy.home=/tmp/.ivy2"
+      src/aggregator.py
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=broker:19092
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=admin
+      - MINIO_SECRET_KEY=password
+      - INPUT_TOPIC=logs-normalized
+      - ALERT_TOPIC=logs-alerts
+      - ALERT_THRESHOLD_EVENTS=500
+      - ALERT_THRESHOLD_SYN=0.8
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      broker:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    restart: on-failure
+
+  # ── Spark Job 3 — Batch Reporter ───────────────────────────────
+  batch-reporter:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.spark
+    container_name: spark-batch-reporter
+    command: >
+      /opt/spark/bin/spark-submit
+      --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262
+      --conf "spark.driver.extraJavaOptions=-Divy.home=/tmp/.ivy2"
+      src/batch_reporter.py
+    environment:
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=admin
+      - MINIO_SECRET_KEY=password
+      - REPORT_INTERVAL_SECONDS=300
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    restart: on-failure
+
+  # ── Alert Consumer ─────────────────────────────────────────────
+  alert-consumer:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.alert
+    container_name: alert-consumer
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=broker:19092
+      - ALERT_TOPIC=logs-alerts
+      - GROUP_ID=alert-display
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      broker:
+        condition: service_healthy
+    restart: on-failure

@@ -1,0 +1,34 @@
+FROM apache/spark:3.5.2-python3
+
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        librdkafka-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir --prefer-binary pandas confluent-kafka
+
+# Copy all source files
+COPY src/ src/
+
+# Shared ivy cache dir to avoid permission errors downloading JDBC/Kafka jars
+RUN mkdir -p /tmp/.ivy2 && chmod 777 /tmp/.ivy2
+
+USER spark
+
+ENV IVY_HOME=/tmp/.ivy2
+ENV SPARK_PACKAGES="org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.2,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262"
+
+# Default: normalizer. Override in docker-compose via `command:`.
+CMD /opt/spark/bin/spark-submit \
+    --packages $SPARK_PACKAGES \
+    --conf "spark.driver.extraJavaOptions=-Divy.home=/tmp/.ivy2" \
+    src/normalizer.py
+

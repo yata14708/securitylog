@@ -1,0 +1,32 @@
+FROM apache/spark:3.5.2-python3
+
+USER root
+
+# Install dependencies for python packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-confluent-kafka \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install dependencies required by the script
+COPY requirements.txt .
+# Filter out pyspark and confluent-kafka from requirements as we use the system ones
+RUN grep -v pyspark requirements.txt | grep -v confluent-kafka > reqs.txt && \
+    pip install --no-cache-dir -r reqs.txt
+
+# Copy the source code
+COPY src/ src/
+
+# Switch back to the spark user
+USER spark
+
+# Create an ivy home directory explicitly to solve permission issues downloading JDBC/Kafka jars
+RUN mkdir -p /tmp/.ivy2 && chmod 777 /tmp/.ivy2
+ENV IVY_HOME=/tmp/.ivy2
+
+# Define environment variable that we can reuse in the CMD
+ENV SPARK_PACKAGES="org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.2,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262"
+
+# Run the PySpark job using spark-submit, passing the required packages
+CMD /opt/spark/bin/spark-submit --packages $SPARK_PACKAGES --conf "spark.driver.extraJavaOptions=-Divy.home=/tmp/.ivy2" src/consumer.py

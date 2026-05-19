@@ -1,0 +1,36 @@
+services:
+  trino:
+    image: trinodb/trino:436
+    container_name: trino
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/config.properties:/etc/trino/config.properties:ro
+      - ./trino/jvm.config:/etc/trino/jvm.config:ro
+      - ./trino/catalog:/etc/trino/catalog:ro
+      - trino_metastore:/tmp/hive-catalog
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  trino-init:
+    image: trinodb/trino:436
+    container_name: trino-init
+    depends_on:
+      trino:
+        condition: service_healthy
+    volumes:
+      - ../scripts/create_trino_tables.sql:/scripts/create_trino_tables.sql:ro
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Running Trino DDL...';
+      /usr/lib/trino/bin/trino --server http://trino:8080 --file /scripts/create_trino_tables.sql;
+      echo 'Trino DDL complete.';
+      "
+    restart: on-failure
+
+volumes:
+  trino_metastore:

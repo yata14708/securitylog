@@ -1,0 +1,6 @@
+include:
+  - docker-compose.kafka.yaml
+  - docker-compose.minio.yaml
+  - docker-compose.consumer.yaml
+  - docker-compose.trino.yaml
+  - docker-compose.superset.yaml

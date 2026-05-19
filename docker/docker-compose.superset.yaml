@@ -1,0 +1,72 @@
+services:
+  superset-db:
+    image: postgres:15-alpine
+    container_name: superset-db
+    environment:
+      POSTGRES_DB:       superset
+      POSTGRES_USER:     superset
+      POSTGRES_PASSWORD: superset
+    volumes:
+      - superset_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U superset"]
+      interval: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: superset-redis
+    volumes:
+      - superset_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 5
+
+  superset-init:
+    image: apache/superset:latest
+    container_name: superset-init
+    depends_on:
+      superset-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://superset:superset@superset-db:5432/superset
+      REDIS_URL: redis://superset-redis:6379/0
+      SUPERSET_SECRET_KEY: "changeme-super-secret-key-32chars!!"
+    volumes:
+      - ./superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ./superset/init.sh:/init.sh:ro
+    entrypoint: ["/bin/sh", "/init.sh"]
+    restart: on-failure
+
+  superset:
+    image: apache/superset:latest
+    container_name: superset
+    ports:
+      - "8088:8088"
+    depends_on:
+      superset-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      superset-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+psycopg2://superset:superset@superset-db:5432/superset
+      REDIS_URL: redis://superset-redis:6379/0
+      SUPERSET_SECRET_KEY: "changeme-super-secret-key-32chars!!"
+    volumes:
+      - ./superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+    command: gunicorn --bind 0.0.0.0:8088 --workers 2 --timeout 120 "superset.app:create_app()"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  superset_db_data:
+  superset_redis_data:
