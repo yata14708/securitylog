@@ -24,7 +24,9 @@ services:
       retries: 5
 
   superset-init:
-    image: apache/superset:latest
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.superset
     container_name: superset-init
     depends_on:
       superset-db:
@@ -42,7 +44,9 @@ services:
     restart: on-failure
 
   superset:
-    image: apache/superset:latest
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.superset
     container_name: superset
     ports:
       - "8088:8088"

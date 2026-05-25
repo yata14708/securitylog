@@ -27,7 +27,7 @@ services:
     entrypoint: >
       /bin/sh -c "
       echo 'Running Trino DDL...';
-      /usr/lib/trino/bin/trino --server http://trino:8080 --file /scripts/create_trino_tables.sql;
+      /usr/bin/trino --server http://trino:8080 --file /scripts/create_trino_tables.sql;
       echo 'Trino DDL complete.';
       "
     restart: on-failure

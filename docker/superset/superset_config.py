@@ -5,6 +5,7 @@ DATABASE_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql+psycopg2://superset:superset@superset-db:5432/superset"
 )
+SQLALCHEMY_DATABASE_URI = DATABASE_URL
 
 # ── Secret key ───────────────────────────────────────────────────────────
 SECRET_KEY = os.environ.get("SUPERSET_SECRET_KEY", "changeme-super-secret-key-32chars!!")
